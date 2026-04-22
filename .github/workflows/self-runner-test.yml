@@ -6,7 +6,11 @@ on:
       - main
 
 jobs:
-  build-and-push:
+
+  # =========================
+  # 1. BUILD JOB
+  # =========================
+  build:
     runs-on: [self-hosted, rama]
 
     env:
@@ -15,53 +19,62 @@ jobs:
       ECR_REPO: raghu-node-app
 
     steps:
-      # =========================
-      # 1. Checkout Code
-      # =========================
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # =========================
-      # 2. Ensure ECR Repository Exists
-      # =========================
+      - name: Build Docker Image
+        run: docker build -t $ECR_REPO .
+
+      - name: Save Image as Artifact
+        run: docker save $ECR_REPO > image.tar
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar
+
+
+  # =========================
+  # 2. PUSH JOB (depends on build)
+  # =========================
+  push-to-ecr:
+    needs: build
+    runs-on: [self-hosted, rama]
+
+    env:
+      AWS_REGION: ap-south-1
+      AWS_ACCOUNT_ID: 957948932374
+      ECR_REPO: raghu-node-app
+
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Load Docker Image
+        run: docker load < image.tar
+
       - name: Create ECR Repo if not exists
         run: |
           aws ecr describe-repositories --repository-names $ECR_REPO --region $AWS_REGION || \
           aws ecr create-repository --repository-name $ECR_REPO --region $AWS_REGION
 
-      # =========================
-      # 3. Build Docker Image
-      # =========================
-      - name: Build Docker Image
-        run: |
-          docker build -t $ECR_REPO .
-
-      # =========================
-      # 4. Login to AWS ECR
-      # =========================
-      - name: Login to Amazon ECR
+      - name: Login to ECR
         run: |
           aws ecr get-login-password --region $AWS_REGION | \
           docker login --username AWS --password-stdin \
           $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-      # =========================
-      # 5. Tag Image
-      # =========================
-      - name: Tag Docker Image
+      - name: Tag Image
         run: |
           docker tag $ECR_REPO:latest \
           $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
 
-      # =========================
-      # 6. Push Image to ECR
-      # =========================
       - name: Push to ECR
         run: |
           docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
 
-      # =========================
-      # 7. Success Message
-      # =========================
       - name: Done
-        run: echo "🚀 Docker image successfully pushed to ECR"
+        run: echo "🚀 Pushed to ECR successfully"
