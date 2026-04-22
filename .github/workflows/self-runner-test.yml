@@ -1,4 +1,4 @@
-name: DevOps App Pipeline
+name: DevOps App Pipeline (Fixed)
 
 on:
   push:
@@ -16,8 +16,10 @@ jobs:
       # 🔍 System Info
       - name: System Info
         run: |
+          echo "===== SYSTEM INFO ====="
           uname -a
           whoami
+          echo "Arch: $(uname -m)"
 
       # 🔧 Install Node.js
       - name: Install Node
@@ -30,21 +32,34 @@ jobs:
         run: |
           npm install
 
-      # ▶️ Run app (background)
+      # ▶️ Start App (background)
       - name: Start App
         run: |
-          node app.js &
+          node app.js > app.log 2>&1 &
+          echo "App started..."
           sleep 5
 
-      # 🌐 Test app locally
+      # 🌐 Test app
       - name: Test App
         run: |
           curl http://localhost:3000
 
-      # 📦 Package app
+      # 🛑 Stop app (VERY IMPORTANT FIX)
+      - name: Stop App
+        run: |
+          pkill -f "node app.js" || true
+
+      # 📦 Prepare clean build (NO runtime files)
+      - name: Prepare Build
+        run: |
+          mkdir build
+          cp app.js package.json build/
+          echo "Build prepared"
+
+      # 📦 Create artifact (FIXED)
       - name: Create Artifact
         run: |
-          tar -czf app-build.tar.gz .
+          tar -czf app-build.tar.gz build/
 
       # 📤 Upload artifact
       - name: Upload Artifact
@@ -52,3 +67,8 @@ jobs:
         with:
           name: app-build
           path: app-build.tar.gz
+
+      # ✅ Final status
+      - name: Pipeline Status
+        run: |
+          echo "✅ Pipeline completed successfully"
