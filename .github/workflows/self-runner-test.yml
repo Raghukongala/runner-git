@@ -1,4 +1,4 @@
-name: DevOps Docker Pipeline (Multi Job)
+name: DevOps Docker Pipeline
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  # 🔹 JOB 1: Build
+  # 🔹 JOB 1: Build Docker Image
   build:
     runs-on: [self-hosted, rama]
 
@@ -14,28 +14,32 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Docker
+      - name: System Info
         run: |
-          sudo apt update
-          sudo apt install -y docker.io
-          sudo systemctl start docker
+          uname -a
+          whoami
+          docker --version
 
       - name: Build Docker Image
         run: |
           docker build -t raghu-node-app .
 
-  # 🔹 JOB 2: Test (runs AFTER build)
+  # 🔹 JOB 2: Run & Test Container
   test:
-    needs: build   # 👈 dependency
+    needs: build
     runs-on: [self-hosted, rama]
 
     steps:
+      - name: Rebuild Image (needed for new job)
+        run: |
+          docker build -t raghu-node-app .
+
       - name: Run Container
         run: |
           docker run -d -p 3000:3000 --name test-container raghu-node-app
           sleep 5
 
-      - name: Test App
+      - name: Test Application
         run: |
           curl http://localhost:3000
 
@@ -44,12 +48,16 @@ jobs:
           docker stop test-container || true
           docker rm test-container || true
 
-  # 🔹 JOB 3: Deploy (optional)
+  # 🔹 JOB 3: Deploy (with approval ready)
   deploy:
-    needs: test   # 👈 runs after test
+    needs: test
     runs-on: [self-hosted, rama]
+
+    environment:
+      name: production   # 👈 enables manual approval
 
     steps:
       - name: Deploy Step
         run: |
           echo "🚀 Deploying application..."
+          echo "This is where ECS deployment will happen"
