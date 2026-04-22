@@ -1,4 +1,4 @@
-name: DevOps Docker Pipeline
+name: DevOps Docker Pipeline (Multi Job)
 
 on:
   push:
@@ -6,55 +6,50 @@ on:
       - main
 
 jobs:
-  docker-build:
+  # 🔹 JOB 1: Build
+  build:
     runs-on: [self-hosted, rama]
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 🔍 System Info
-      - name: System Info
-        run: |
-          uname -a
-          docker --version || echo "Docker not installed"
-
-      # 🔧 Install Docker (if not present)
       - name: Install Docker
         run: |
           sudo apt update
           sudo apt install -y docker.io
           sudo systemctl start docker
-          sudo systemctl enable docker
-          sudo usermod -aG docker $USER
 
-      # 🐳 Build Docker Image
-      - name: Build Image
+      - name: Build Docker Image
         run: |
           docker build -t raghu-node-app .
 
-      # ▶️ Run Container
+  # 🔹 JOB 2: Test (runs AFTER build)
+  test:
+    needs: build   # 👈 dependency
+    runs-on: [self-hosted, rama]
+
+    steps:
       - name: Run Container
         run: |
           docker run -d -p 3000:3000 --name test-container raghu-node-app
           sleep 5
 
-      # 🌐 Test Application
       - name: Test App
         run: |
           curl http://localhost:3000
 
-      # 🛑 Stop Container
       - name: Stop Container
         run: |
           docker stop test-container || true
           docker rm test-container || true
 
-      # 🧹 Cleanup Image
-      - name: Cleanup
-        run: |
-          docker rmi raghu-node-app || true
+  # 🔹 JOB 3: Deploy (optional)
+  deploy:
+    needs: test   # 👈 runs after test
+    runs-on: [self-hosted, rama]
 
-      # ✅ Status
-      - name: Done
-        run: echo "Docker pipeline successful 🚀"
+    steps:
+      - name: Deploy Step
+        run: |
+          echo "🚀 Deploying application..."
