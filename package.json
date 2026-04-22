@@ -1,0 +1,9 @@
+{
+  "name": "devops-runner-app",
+  "version": "1.0.0",
+  "description": "Simple app for GitHub Actions self-hosted runner",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  }
+}
