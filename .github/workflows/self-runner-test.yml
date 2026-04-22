@@ -1,4 +1,4 @@
-name: Test Self Hosted Runner
+name: DevOps App Pipeline
 
 on:
   push:
@@ -6,24 +6,49 @@ on:
       - main
 
 jobs:
-  test:
-    runs-on: [self-hosted, rama]   # 👈 IMPORTANT (match your label)
+  build-and-run:
+    runs-on: [self-hosted, rama]
 
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Runner Test
+      # 🔍 System Info
+      - name: System Info
         run: |
-          echo "🔥 Runner is working"
           uname -a
           whoami
 
-      - name: File Test
+      # 🔧 Install Node.js
+      - name: Install Node
         run: |
-          echo "Hello Raghu DevOps" > test.txt
-          cat test.txt
+          curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+          sudo apt install -y nodejs
 
-      - name: List Files
+      # 📦 Install dependencies
+      - name: Install Dependencies
         run: |
-          ls -ltr
+          npm install
+
+      # ▶️ Run app (background)
+      - name: Start App
+        run: |
+          node app.js &
+          sleep 5
+
+      # 🌐 Test app locally
+      - name: Test App
+        run: |
+          curl http://localhost:3000
+
+      # 📦 Package app
+      - name: Create Artifact
+        run: |
+          tar -czf app-build.tar.gz .
+
+      # 📤 Upload artifact
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: app-build.tar.gz
