@@ -1,80 +1,85 @@
-name: DevOps Docker CI/CD to ECR
+name: App CI/CD to ECS (Deploy from ECR)
 
 on:
   push:
     branches:
       - main
 
+env:
+  AWS_REGION: ap-south-1
+  AWS_ACCOUNT_ID: 957948932374
+  ECR_REPO: raghu-node-app
+  ECS_CLUSTER: raghu-cluster
+  ECS_SERVICE: raghu-service
+
 jobs:
 
-  # =========================
-  # 1. BUILD JOB
-  # =========================
-  build:
+  deploy:
     runs-on: [self-hosted, rama]
 
-    env:
-      AWS_REGION: ap-south-1
-      AWS_ACCOUNT_ID: 957948932374
-      ECR_REPO: raghu-node-app
-
     steps:
+
+      # =========================
+      # 1. Checkout code (optional for metadata)
+      # =========================
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build Docker Image
-        run: docker build -t $ECR_REPO .
-
-      - name: Save Image as Artifact
-        run: docker save $ECR_REPO > image.tar
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image
-          path: image.tar
-
-
-  # =========================
-  # 2. PUSH JOB (depends on build)
-  # =========================
-  push-to-ecr:
-    needs: build
-    runs-on: [self-hosted, rama]
-
-    env:
-      AWS_REGION: ap-south-1
-      AWS_ACCOUNT_ID: 957948932374
-      ECR_REPO: raghu-node-app
-
-    steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
-
-      - name: Load Docker Image
-        run: docker load < image.tar
-
-      - name: Create ECR Repo if not exists
+      # =========================
+      # 2. Configure AWS (IMPORTANT FIX)
+      # =========================
+      - name: Configure AWS Credentials
         run: |
-          aws ecr describe-repositories --repository-names $ECR_REPO --region $AWS_REGION || \
-          aws ecr create-repository --repository-name $ECR_REPO --region $AWS_REGION
+          export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          export AWS_REGION=$AWS_REGION
+          aws sts get-caller-identity
 
+      # =========================
+      # 3. Login to ECR
+      # =========================
       - name: Login to ECR
         run: |
           aws ecr get-login-password --region $AWS_REGION | \
           docker login --username AWS --password-stdin \
           $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-      - name: Tag Image
+      # =========================
+      # 4. Pull latest image from ECR
+      # =========================
+      - name: Pull Image
         run: |
-          docker tag $ECR_REPO:latest \
+          docker pull $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+
+      # =========================
+      # 5. Stop old container (if running locally on runner)
+      # =========================
+      - name: Stop old container
+        run: |
+          docker stop app || true
+          docker rm app || true
+
+      # =========================
+      # 6. Run new container (test on runner)
+      # =========================
+      - name: Run Container (Validation step)
+        run: |
+          docker run -d --name app -p 3000:3000 \
           $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
 
-      - name: Push to ECR
+      # =========================
+      # 7. Deploy to ECS (REAL DEPLOY)
+      # =========================
+      - name: Force ECS Deployment
         run: |
-          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --force-new-deployment \
+            --region $AWS_REGION
 
+      # =========================
+      # 8. Success
+      # =========================
       - name: Done
-        run: echo "🚀 Pushed to ECR successfully"
+        run: echo "🚀 App deployed successfully to ECS"
