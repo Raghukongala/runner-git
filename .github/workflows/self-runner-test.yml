@@ -1,4 +1,4 @@
-name: DevOps App Pipeline (Fixed)
+name: DevOps Docker Pipeline
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build-and-run:
+  docker-build:
     runs-on: [self-hosted, rama]
 
     steps:
@@ -16,59 +16,45 @@ jobs:
       # 🔍 System Info
       - name: System Info
         run: |
-          echo "===== SYSTEM INFO ====="
           uname -a
-          whoami
-          echo "Arch: $(uname -m)"
+          docker --version || echo "Docker not installed"
 
-      # 🔧 Install Node.js
-      - name: Install Node
+      # 🔧 Install Docker (if not present)
+      - name: Install Docker
         run: |
-          curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-          sudo apt install -y nodejs
+          sudo apt update
+          sudo apt install -y docker.io
+          sudo systemctl start docker
+          sudo systemctl enable docker
+          sudo usermod -aG docker $USER
 
-      # 📦 Install dependencies
-      - name: Install Dependencies
+      # 🐳 Build Docker Image
+      - name: Build Image
         run: |
-          npm install
+          docker build -t raghu-node-app .
 
-      # ▶️ Start App (background)
-      - name: Start App
+      # ▶️ Run Container
+      - name: Run Container
         run: |
-          node app.js > app.log 2>&1 &
-          echo "App started..."
+          docker run -d -p 3000:3000 --name test-container raghu-node-app
           sleep 5
 
-      # 🌐 Test app
+      # 🌐 Test Application
       - name: Test App
         run: |
           curl http://localhost:3000
 
-      # 🛑 Stop app (VERY IMPORTANT FIX)
-      - name: Stop App
+      # 🛑 Stop Container
+      - name: Stop Container
         run: |
-          pkill -f "node app.js" || true
+          docker stop test-container || true
+          docker rm test-container || true
 
-      # 📦 Prepare clean build (NO runtime files)
-      - name: Prepare Build
+      # 🧹 Cleanup Image
+      - name: Cleanup
         run: |
-          mkdir build
-          cp app.js package.json build/
-          echo "Build prepared"
+          docker rmi raghu-node-app || true
 
-      # 📦 Create artifact (FIXED)
-      - name: Create Artifact
-        run: |
-          tar -czf app-build.tar.gz build/
-
-      # 📤 Upload artifact
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-build
-          path: app-build.tar.gz
-
-      # ✅ Final status
-      - name: Pipeline Status
-        run: |
-          echo "✅ Pipeline completed successfully"
+      # ✅ Status
+      - name: Done
+        run: echo "Docker pipeline successful 🚀"
